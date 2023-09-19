@@ -1,7 +1,6 @@
 import * as React from "react";
 import { graphql } from "relay-runtime";
-import { useFragment } from "react-relay";
-
+import { useMutation, useFragment } from "react-relay";
 import type { StoryLikeButtonFragment$key } from "./__generated__/StoryLikeButtonFragment.graphql";
 
 type Props = {
@@ -16,13 +15,43 @@ const StoryLikeButtonFragment = graphql`
   }
 `;
 
+const StoryLikeButtonLikeMutation = graphql`
+  mutation StoryLikeButtonLikeMutation($id: ID!, $doesLike: Boolean!) {
+    likeStory(id: $id, doesLike: $doesLike) {
+      story {
+        ...StoryLikeButtonFragment
+      }
+    }
+  }
+`;
+
 export default function StoryLikeButton({ story }: Props): React.ReactElement {
   const data = useFragment<StoryLikeButtonFragment$key>(
     StoryLikeButtonFragment,
     story
   );
+  const [commitMutatiom, isMutationInFlight] = useMutation(
+    StoryLikeButtonLikeMutation
+  );
   const onLikeButtonClicked = () => {
-    // To be filled in
+    commitMutatiom({
+      variables: {
+        id: data.id,
+        doesLike: !data.doesViewerLike,
+      },
+      optimisticUpdater: (store) => {
+        const fragment = graphql`
+          fragment StoryLikeButton_updatable on Story @updatable {
+            likeCount
+            doesViewerLike
+          }
+        `;
+        const { updatableData } = store.readUpdatableFragment(fragment, story);
+        const alreadyLikes = updatableData.doesViewerLike;
+        updatableData.doesViewerLike = !alreadyLikes;
+        updatableData.likeCount += alreadyLikes ? -1 : 1;
+      },
+    });
   };
   return (
     <div className="likeButton">
@@ -30,6 +59,7 @@ export default function StoryLikeButton({ story }: Props): React.ReactElement {
       <LikeButton
         doesViewerLike={data.doesViewerLike}
         onClick={onLikeButtonClicked}
+        disabled={isMutationInFlight}
       />
     </div>
   );
